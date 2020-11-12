@@ -48,6 +48,8 @@ func TestParse(t *testing.T) {
 			}
 		}
 
+		t.Log(libList)
+
 		sort.Slice(libList, func(i, j int) bool {
 			ret := strings.Compare(libList[i].Name, libList[j].Name)
 			if ret == 0 {
