@@ -1,7 +1,9 @@
 package whl
 
 import (
+	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -10,62 +12,70 @@ import (
 	"github.com/kylelemons/godebug/pretty"
 )
 
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
 func TestParse(t *testing.T) {
 
-	vectors := []struct {
-		file      string // Test input file
-		libraries []types.Library
-	}{
-		{
-			file:      "testdata/Flask-0.12.1.dist-info/METADATA",
-			libraries: FlaskDeps,
-		},
-		{
-			file:      "testdata/Jinja2-2.11.2.dist-info/METADATA",
-			libraries: Jinja2Deps,
-		},
-	}
+	sitePackages := "./testdata/site-packages"
+	libraries := PipenvNormal
 
-	for _, v := range vectors {
-		t.Run(v.file, func(t *testing.T) {
-			f, err := os.Open(v.file)
-			if err != nil {
-				t.Fatalf("Open() error: %v", err)
-			}
-			libList, err := Parse(f)
-			if err != nil {
-				t.Fatalf("Parse() error: %v", err)
-			}
+	t.Run(sitePackages, func(t *testing.T) {
 
-			sort.Slice(libList, func(i, j int) bool {
-				ret := strings.Compare(libList[i].Name, libList[j].Name)
-				if ret == 0 {
-					return libList[i].Version < libList[j].Version
+		// Get *.dist-info directories
+		folders, err := filepath.Glob(sitePackages + "/*.dist-info")
+		if err != nil {
+			log.Fatalf("Glob() error: %v", err)
+		}
+		libList := []types.Library{}
+
+		for _, f := range folders {
+			if fileExists(f + "/METADATA") {
+				f, err := os.Open(f + "/METADATA")
+				if err != nil {
+					t.Fatalf("Open() error: %v", err)
 				}
-				return ret < 0
-			})
-
-			sort.Slice(v.libraries, func(i, j int) bool {
-				ret := strings.Compare(v.libraries[i].Name, v.libraries[j].Name)
-				if ret == 0 {
-					return v.libraries[i].Version < v.libraries[j].Version
+				libs, err := Parse(f)
+				if err != nil {
+					t.Fatalf("Parse() error: %v", err)
 				}
-				return ret < 0
-			})
-
-			if len(libList) != len(v.libraries) {
-				t.Fatalf("lib length: %s", pretty.Compare(libList, v.libraries))
+				libList = append(libList, libs...)
 			}
+		}
 
-			for i, got := range libList {
-				want := v.libraries[i]
-				if want.Name != got.Name {
-					t.Errorf("%d: Name: got %s, want %s", i, got.Name, want.Name)
-				}
-				if want.Version != got.Version {
-					t.Errorf("%d: Version: got %s, want %s", i, got.Version, want.Version)
-				}
+		sort.Slice(libList, func(i, j int) bool {
+			ret := strings.Compare(libList[i].Name, libList[j].Name)
+			if ret == 0 {
+				return libList[i].Version < libList[j].Version
 			}
+			return ret < 0
 		})
-	}
+
+		sort.Slice(libraries, func(i, j int) bool {
+			ret := strings.Compare(libraries[i].Name, libraries[j].Name)
+			if ret == 0 {
+				return libraries[i].Version < libraries[j].Version
+			}
+			return ret < 0
+		})
+
+		if len(libList) != len(libraries) {
+			t.Fatalf("lib length: %s", pretty.Compare(libList, libraries))
+		}
+
+		for i, got := range libList {
+			want := libraries[i]
+			if want.Name != got.Name {
+				t.Errorf("%d: Name: got %s, want %s", i, got.Name, want.Name)
+			}
+			if want.Version != got.Version {
+				t.Errorf("%d: Version: got %s, want %s", i, got.Version, want.Version)
+			}
+		}
+	})
 }
